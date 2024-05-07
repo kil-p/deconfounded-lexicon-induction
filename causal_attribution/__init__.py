@@ -85,7 +85,7 @@ def score_vocab(
     elif df is not None:
         df = df.dropna()
     else:
-        raise Exception('Must provide a csv or df.')        
+        raise Exception('Must provide a csv or df.')
 
     assert 'UNK' not in vocab, 'ERROR: UNK is not allowed as vocab element.'
     assert 'PAD' not in vocab, 'ERROR: PAD is not allowed as vocab element.'
@@ -113,6 +113,12 @@ def score_vocab(
     optimizer = optim.Adam(model.parameters(), lr=lr)
     iterator = iterator_fn()
     stepper = tqdm(range(train_steps)) if status_bar else range(train_steps)
+
+    feature_predict = [k for k,v in name_to_type.items() if v == 'predict'][0]
+    targets = []
+    predictions = []
+    loss_list = []
+    confound_loss_list = []
     for i in stepper:
         try:
             batch = next(iterator)
@@ -125,13 +131,18 @@ def score_vocab(
         confound_preds, confound_loss, final_preds, final_loss = model(batch)
         loss = confound_loss + final_loss  # TODO(rpryzant) weighting?
 
+        loss_list.append(final_loss.detach().item())
+        confound_loss_list.append(confound_loss.detach().item())
+        targets.extend(batch[feature_predict].detach().numpy())
+        predictions.extend(final_preds[feature_predict].detach().numpy())
+
         loss.backward()
         optimizer.step()
         model.zero_grad()
 
     features_scores = model.interpret()
 
-    return features_scores
+    return features_scores, targets, predictions, loss_list, confound_loss_list
 
 
 def evaluate_vocab(vocab,
